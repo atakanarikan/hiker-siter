@@ -3,56 +3,48 @@
     "name": "Grlja Waterfall",
     "lat": 42.52288,
     "lon": 19.84158,
-    "near": "Vusanje",
-    "src": "mapcarta_grlja"
+    "near": "Vusanje"
   },
   {
     "name": "Eye of the Grasshopper Spring (Oko Skakavice)",
     "lat": 42.5119,
     "lon": 19.83486,
-    "near": "Ropojana Valley",
-    "src": "mapcarta_oko"
+    "near": "Ropojana Valley"
   },
   {
     "name": "Lake Ropojana (Ropojansko jezero)",
     "lat": 42.485655,
     "lon": 19.796162,
-    "near": "Ropojana Valley (border area)",
-    "src": "photomontenegro_ropojansko"
+    "near": "Ropojana Valley"
   },
   {
     "name": "Peja Pass (Qafa e Pej\u00ebs) \u2013 Viewpoint",
     "lat": 42.443875,
     "lon": 19.77062,
-    "near": "Above Theth",
-    "src": "peakvisor_peja"
+    "near": "Above Theth"
   },
   {
     "name": "Valbona Pass (Qafa e Valbon\u00ebs)",
     "lat": 42.40583,
     "lon": 19.81528,
-    "near": "Between Theth & Valbona",
-    "src": "wikipedia_valbona_pass"
+    "near": "Between Theth & Valbona"
   },
   {
     "name": "Lake Tropoja",
     "lat": 42.546139,
     "lon": 20.092917,
-    "near": "toward Gacaferi",
-    "src": "wikipedia_tropoja_lake"
+    "near": "toward Gacaferi"
   },
   {
     "name": "Three Border Peak (Trekufiri / Tromeda)",
     "lat": 42.555318,
     "lon": 20.078997,
-    "near": "border junction",
-    "src": "wikipedia_trekufiri"
+    "near": "border junction"
   },
   {
     "name": "Lake Hrid (Hridsko Jezero)",
     "lat": 42.57165,
     "lon": 20.03472,
-    "near": "Babino Polje day",
-    "src": "mapcarta_hridsko"
+    "near": "Babino Polje day"
   }
 ]
