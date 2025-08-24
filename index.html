@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HikeTracker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root { --bg:#f7f7f7; --fg:#111; --muted:#666; --card:#fff; --bd:#e5e5e5; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; color:var(--fg); background:var(--bg); }
+    header { position:sticky; top:0; background:#fff; border-bottom:1px solid var(--bd); padding:10px 16px; z-index:10 }
+    .container { max-width:1100px; margin:0 auto; padding:16px }
+    .grid { display:grid; grid-template-columns: 1.8fr 1fr; gap:16px }
+    #map { height: 460px; border-radius:16px; overflow:hidden; position:relative; }
+    .card { background:var(--card); border-radius:16px; box-shadow:0 2px 16px rgba(0,0,0,0.05); padding:16px }
+    .small { color:#555; font-size:12px }
+    .list > div { border:1px solid var(--bd); border-radius:12px; padding:12px; margin-bottom:8px }
+    button.primary { background:#111; color:#fff; border:none; border-radius:12px; padding:10px 14px; cursor:pointer }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:12px }
+    .muted { color:var(--muted) }
+    .legend { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px }
+    .chip { display:flex; align-items:center; gap:6px; border:1px solid var(--bd); border-radius:999px; padding:4px 8px; font-size:12px }
+    .swatch { width:12px; height:12px; border-radius:999px; display:inline-block }
+    .actions { display:flex; gap:8px; }
+    .elev { height: 160px; width: 100%; }
+    .poi-item { display:flex; align-items:center; justify-content:space-between; gap:8px }
+    .link { color:#0a58ca; text-decoration:none }
+    .pill { border:1px solid var(--bd); border-radius:999px; padding:4px 8px; font-size:12px }
+    .map-controls { position:absolute; top:12px; right:12px; display:flex; gap:8px; }
+    .btn { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:8px 10px; font-size:12px; cursor:pointer }
+    .tooltip { position:absolute; background:#111; color:#fff; font-size:12px; padding:4px 6px; border-radius:6px; pointer-events:none; transform:translate(-50%,-120%); white-space:nowrap }
+    @media (max-width: 920px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="row container">
+      <div>
+        <div style="font-weight:600; font-size:20px">🏔️ HikeTracker</div>
+        <div class="small" id="subtitle"></div>
+      </div>
+      <div class="row small">
+        <span id="countdown"></span>
+        <a class="primary" id="openDayView" href="#" style="text-decoration:none; display:none">Open Day View</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="grid">
+      <section>
+        <div class="card">
+          <div class="row" style="margin-bottom:8px">
+            <div>
+              <div style="font-weight:600">Map</div>
+              <div class="small">Preloaded daily GPX tracks + stays + POIs</div>
+            </div>
+            <div class="small" id="stageStats"></div>
+          </div>
+          <div id="map">
+            <div class="map-controls">
+              <button class="btn" id="fitAll">Fit All</button>
+              <button class="btn" id="clearFocus">Clear Focus</button>
+            </div>
+          </div>
+          <div class="legend" id="legend"></div>
+          <div style="position:relative">
+            <canvas id="elevation" class="elev" aria-label="Elevation profile"></canvas>
+            <div id="elevTip" class="tooltip" style="display:none">–</div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div style="font-weight:600; margin-bottom:8px">Sights (POIs)</div>
+          <div class="small muted" style="margin-bottom:8px">Shown by default. Toggle to hide; toggle again to show.</div>
+          <div id="pois" class="list"></div>
+        </div>
+      </section>
+      <aside>
+        <div class="card">
+          <div style="font-weight:600; margin-bottom:8px">Itinerary</div>
+          <div id="days" class="list"></div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div style="font-weight:600; margin-bottom:8px">Stays</div>
+          <div id="stays" class="list"></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // --- Utilities ---
+    const COLORS = ['#e41a1c','#377eb8','#4daf4a','#984ea3','#ff7f00','#a65628','#f781bf','#999999'];
+    function fmtDate(iso) { return new Date(iso).toLocaleDateString(); }
+    function daysTo(iso) { const today = new Date(); const start = new Date(iso); return Math.ceil((start - today) / (1000*60*60*24)); }
+    function saveLocal(k, v){ localStorage.setItem(k, JSON.stringify(v)); }
+    function loadLocal(k, d){ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }
+
+    async function loadTrip(){ return fetch('data/trip.json').then(r=>r.json()); }
+    async function loadPOIs(){ return fetch('data/pois.json').then(r=>r.json()); }
+    async function loadGPX(path){ const text = await fetch(path).then(r=>r.text()); return parseGPX(text); }
+
+    function parseGPX(text){
+      const xml = new DOMParser().parseFromString(text, 'application/xml');
+      let pts = Array.from(xml.getElementsByTagName('trkpt')).map(pt => ([+pt.getAttribute('lat'), +pt.getAttribute('lon'), +(pt.getElementsByTagName('ele')[0]?.textContent || 0)]));
+      if (!pts.length) { pts = Array.from(xml.getElementsByTagName('rtept')).map(pt => ([+pt.getAttribute('lat'), +pt.getAttribute('lon'), 0])); }
+      return pts;
+    }
+    function haversine(a, b){
+      const R = 6371000; const toRad = (d)=>d*Math.PI/180;
+      const dLat = toRad(b[0]-a[0]); const dLon = toRad(b[1]-a[1]);
+      const la1 = toRad(a[0]), la2 = toRad(b[0]);
+      const h = Math.sin(dLat/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;
+      return 2*R*Math.asin(Math.sqrt(h));
+    }
+    function accumulate(points){
+      let d=0; const out=[{d:0,e:points[0]?.[2]||0}];
+      for(let i=1;i<points.length;i++){ d+=haversine(points[i-1],points[i]); out.push({d:d/1000,e:points[i][2]||0}); }
+      return out;
+    }
+    function lerp(a,b,t){ return a+(b-a)*t; }
+    function interpElev(series, km){
+      if(!series || !series.length) return null;
+      const maxD = series[series.length-1].d;
+      if(km<=0) return series[0].e;
+      if(km>=maxD) return series[series.length-1].e;
+      for(let i=1;i<series.length;i++){
+        const a=series[i-1], b=series[i];
+        if (km>=a.d && km<=b.d){
+          const t=(km-a.d)/Math.max(1e-9,(b.d-a.d));
+          return lerp(a.e,b.e,t);
+        }
+      }
+      return series[series.length-1].e;
+    }
+
+    // --- Map + State ---
+    const MAP = L.map('map').setView([42.6, 19.94], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; OpenStreetMap contributors' }).addTo(MAP);
+
+    // Compact dot markers
+    const icon = L.divIcon({ className: 'tiny-marker', html: '<div style="width:10px;height:10px;border-radius:50%;background:#1d4ed8;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)"></div>', iconSize:[10,10], iconAnchor:[5,5] });
+
+    const state = { polylines:[], days:[], elevSeries:[], focused:null, done: loadLocal('done.days', {}),
+                    poiMarkers:{}, poiHidden: loadLocal('poi.hidden', {}), lastFocus: loadLocal('focus.last', null) };
+
+    function drawElevation(series, cursorKm=null){
+      const c = document.getElementById('elevation');
+      const ctx = c.getContext('2d');
+      c.width = c.clientWidth; c.height = c.clientHeight;
+      ctx.clearRect(0,0,c.width,c.height);
+      if (!series || !series.length) { ctx.fillStyle = '#666'; ctx.fillText('Select a day to view elevation', 10, 20); return; }
+      const pad = 24;
+      const maxD = series[series.length-1].d || 1;
+      const [minE,maxE] = series.reduce((acc,p)=>[Math.min(acc[0],p.e), Math.max(acc[1],p.e)], [Infinity,-Infinity]);
+      const x = (d)=> pad + (d/maxD)*(c.width-2*pad);
+      const y = (e)=> c.height - pad - ((e-minE)/(maxE-minE||1))*(c.height-2*pad);
+      // area fill
+      ctx.beginPath();
+      series.forEach((p,i)=>{ const X=x(p.d), Y=y(p.e); if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y); });
+      ctx.lineTo(x(maxD), y(minE)); ctx.lineTo(x(0), y(minE)); ctx.closePath();
+      ctx.fillStyle = 'rgba(0,0,0,0.06)'; ctx.fill();
+      // stroke
+      ctx.beginPath();
+      series.forEach((p,i)=>{ const X=x(p.d), Y=y(p.e); if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y); });
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.stroke();
+      // cursor
+      if (cursorKm!=null){
+        const cx = x(cursorKm);
+        const ce = interpElev(series, cursorKm);
+        const cy = y(ce);
+        ctx.strokeStyle = '#1d4ed8'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(cx, 24); ctx.lineTo(cx, c.height-24); ctx.stroke();
+        ctx.fillStyle = '#1d4ed8'; ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI*2); ctx.fill();
+        // shade completed area
+        ctx.save();
+        ctx.beginPath();
+        series.forEach((p,i)=>{ const d = Math.min(p.d, cursorKm); const X=x(d), Y=y(p.e); if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y); });
+        ctx.lineTo(cx, y(minE)); ctx.lineTo(x(0), y(minE)); ctx.closePath();
+        ctx.fillStyle = 'rgba(29,78,216,0.12)'; ctx.fill();
+        ctx.restore();
+      }
+      // axes box + labels
+      ctx.strokeStyle = '#bbb'; ctx.lineWidth = 1; ctx.strokeRect(pad-1,pad-1,c.width-2*pad+2,c.height-2*pad+2);
+      ctx.fillStyle = '#333'; ctx.fillText(`Distance: ${maxD.toFixed(1)} km`, pad, c.height-6);
+      ctx.fillText(`Elev: ${Math.round(minE)}–${Math.round(maxE)} m`, c.width-170, c.height-6);
+    }
+
+    async function main(){
+      const trip = await loadTrip();
+      document.getElementById('subtitle').textContent = `${trip.name} · Start: ${new Date(trip.start_iso).toLocaleDateString()}`;
+      const d2 = daysTo(trip.start_iso);
+      document.getElementById('countdown').textContent = d2 > 0 ? `${d2} days to go` : 'On trip!';
+
+      // Tracks
+      const bounds = [];
+      for (let i=0;i<trip.days.length;i++){
+        const day = trip.days[i];
+        state.days[i] = { ...day };
+        if(day.gpx){
+          const pts = await loadGPX('assets/'+day.gpx);
+          state.days[i].points = pts;
+          const latlngs = pts.map(p=>[p[0],p[1]]);
+          latlngs.forEach(ll=>bounds.push(ll));
+          const color = COLORS[(i-1+COLORS.length)%COLORS.length];
+          const done = !!state.done[day.n];
+          const line = L.polyline(latlngs, { weight: 5, color: color, opacity: done?0.2:0.95 }).addTo(MAP);
+          line.bindTooltip(`${day.title}`, {permanent:false, direction:'auto'});
+          line.dayIndex = i;
+          state.polylines.push(line);
+          state.elevSeries[i] = accumulate(pts);
+        }
+      }
+      if (bounds.length) MAP.fitBounds(bounds);
+      const allBounds = L.latLngBounds(bounds);
+
+      // Controls: Fit All and Clear Focus
+      document.getElementById('fitAll').onclick = ()=> MAP.fitBounds(allBounds);
+      document.getElementById('clearFocus').onclick = ()=>{
+        state.focused = null;
+        saveLocal('focus.last', null);
+        state.polylines.forEach((l, i)=> l.setStyle({opacity: !!state.done[(state.days[i+1]||{}).n] ? 0.2 : 0.95}));
+        drawElevation([]);
+        document.getElementById('stageStats').textContent = '';
+        document.getElementById('openDayView').style.display = 'none';
+        MAP.fitBounds(allBounds);
+      };
+
+      // Stays
+      const staysDiv = document.getElementById('stays');
+      for (const s of trip.accommodations){
+        const maps = s.lat && s.lon ? `https://www.google.com/maps?q=${s.lat},${s.lon}` : `https://www.google.com/maps/search/${encodeURIComponent(s.name+' '+(s.place||''))}`;
+        const booking = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(s.name+' '+(s.place||''))}`;
+        const el = document.createElement('div');
+        el.innerHTML = `<div><div class="small">Day ${s.day} — ${s.place}</div>
+                        <div style="font-weight:600">${s.name}</div>
+                        <div class="small"><a class="link" target="_blank" href="${maps}">Google Maps</a> ·
+                        <a class="link" target="_blank" href="${booking}">Booking.com</a></div></div>`;
+        staysDiv.appendChild(el);
+        if (s.lat && s.lon) { L.marker([s.lat, s.lon], {icon}).addTo(MAP).bindPopup(`Day ${s.day} — ${s.name}`); }
+      }
+
+      // POIs (as v4)
+      const poiDiv = document.getElementById('pois');
+      const pois = await loadPOIs();
+      for (const p of pois){
+        const row = document.createElement('div');
+        row.className = 'poi-item';
+        const hidden = !!state.poiHidden[p.name];
+        row.innerHTML = `<div>
+            <div style="font-weight:600">${p.name}</div>
+            <div class="small muted">${p.near||''} · <span class="muted">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}</span></div>
+          </div>
+          <label class="pill"><input type="checkbox" data-poi="${p.name}" ${hidden?'':'checked'} /> visible</label>`;
+        poiDiv.appendChild(row);
+        if (!hidden){ state.poiMarkers[p.name] = L.marker([p.lat, p.lon], {icon}).addTo(MAP).bindPopup(p.name); }
+      }
+      poiDiv.addEventListener('change', (e)=>{
+        const name = e.target.getAttribute('data-poi'); if(!name) return;
+        const visible = e.target.checked;
+        state.poiHidden[name] = !visible; saveLocal('poi.hidden', state.poiHidden);
+        const mk = state.poiMarkers[name];
+        if (visible){
+          if (!mk){
+            const p = pois.find(x=>x.name===name);
+            state.poiMarkers[name] = L.marker([p.lat, p.lon], {icon}).addTo(MAP).bindPopup(p.name);
+          }
+        } else {
+          if (mk){ MAP.removeLayer(mk); delete state.poiMarkers[name]; }
+        }
+      });
+
+      // Itinerary list with Done/Focus/Day View
+      const daysDiv = document.getElementById('days');
+      for (let i=0;i<trip.days.length;i++){
+        const day = trip.days[i];
+        const color = COLORS[(i-1+COLORS.length)%COLORS.length];
+        const row = document.createElement('div');
+        const checked = state.done[day.n] ? 'checked' : '';
+        row.innerHTML = `<div class="row">
+            <div>
+              <div class="small">${new Date(day.iso).toLocaleDateString()}</div>
+              <div style="font-weight:600"><span class="swatch" style="background:${color}"></span> ${day.title}</div>
+            </div>
+            <div class="actions small">
+              <label><input type="checkbox" data-done="${day.n}" ${checked}/> done</label>
+              ${day.gpx ? `<button class="primary" data-focus="${i}">Focus</button>` : ''}
+              ${day.gpx ? `<a class="primary" style="text-decoration:none" href="#day=${day.n}">Day View</a>` : ''}
+            </div>
+          </div>`;
+        daysDiv.appendChild(row);
+      }
+
+      // Legend of colors
+      const legend = document.getElementById('legend');
+      for (let i=0;i<trip.days.length;i++){
+        const day = trip.days[i]; if(!day.gpx) continue;
+        const color = COLORS[(i-1+COLORS.length)%COLORS.length];
+        const chip = document.createElement('div');
+        chip.className='chip';
+        chip.innerHTML = `<span class="swatch" style="background:${color}"></span><span>Day ${day.n-1}: ${day.title}</span>`;
+        legend.appendChild(chip);
+      }
+
+      // Done toggles
+      daysDiv.addEventListener('change', (e)=>{
+        const n = +e.target.getAttribute('data-done'); if(!n) return;
+        state.done[n] = e.target.checked; saveLocal('done.days', state.done);
+        const idx = state.days.findIndex(d=>d?.n===n);
+        const line = state.polylines[idx-1]; if(line) line.setStyle({opacity: e.target.checked?0.2:0.95});
+      });
+
+      // Focus handling
+      function applyFocus(idx){
+        state.focused = idx;
+        saveLocal('focus.last', idx);
+        state.polylines.forEach((l, i)=> l.setStyle({opacity: i===idx-1? 1.0 : 0.05}));
+        const pts = state.days[idx].points;
+        const latlngs = pts.map(p=>[p[0],p[1]]);
+        MAP.fitBounds(latlngs);
+        drawElevation(state.elevSeries[idx], null);
+        document.getElementById('stageStats').textContent =
+          `${(state.elevSeries[idx].slice(-1)[0].d).toFixed(1)} km`;
+        document.getElementById('openDayView').style.display = 'inline-block';
+        // enable elevation hover tooltip
+        enableElevHover(state.elevSeries[idx]);
+      }
+
+      daysDiv.addEventListener('click', (e)=>{
+        const btn = e.target.closest('button[data-focus]'); if(!btn) return;
+        const idx = +btn.getAttribute('data-focus');
+        applyFocus(idx);
+      });
+
+      // Restore last focus if available
+      if (state.lastFocus!=null && state.lastFocus>0 && state.lastFocus < state.days.length){
+        applyFocus(state.lastFocus);
+      } else {
+        drawElevation([]);
+      }
+
+      // Elevation hover tooltip on main page
+      function enableElevHover(series){
+        const canvas = document.getElementById('elevation');
+        const tip = document.getElementById('elevTip');
+        const pad = 24;
+        const maxD = series[series.length-1].d || 1;
+        function posToKm(evt){
+          const rect = canvas.getBoundingClientRect();
+          const x = evt.clientX - rect.left;
+          const usable = canvas.clientWidth - 2*pad;
+          const t = Math.min(1, Math.max(0, (x - pad) / Math.max(1, usable)));
+          return t * maxD;
+        }
+        canvas.onmousemove = (evt)=>{
+          const km = posToKm(evt);
+          const e = interpElev(series, km);
+          drawElevation(series, km);
+          tip.style.display = 'block';
+          tip.textContent = `${km.toFixed(2)} km · ${Math.round(e)} m`;
+          const rect = canvas.getBoundingClientRect();
+          tip.style.left = `${evt.clientX - rect.left}px`;
+          tip.style.top = `${10}px`;
+        };
+        canvas.onmouseleave = ()=>{
+          tip.style.display = 'none';
+          drawElevation(series, null);
+        };
+      }
+
+      // Hash routing for Day View
+      const hash = location.hash;
+      if (hash.startsWith('#day=')){
+        const n = +hash.split('=')[1];
+        const idx = state.days.findIndex(d=>d?.n===n);
+        if (idx >= 0){ renderDayView(idx); }
+      }
+
+      // ---- Day View with hover tooltip as well ----
+      async function renderDayView(idx){
+        document.body.innerHTML = `<header><div class="container row">
+          <div><div style="font-weight:600; font-size:20px">🏔️ HikeTracker — Day ${state.days[idx].n-1}: ${state.days[idx].title}</div>
+          <div class="small">${new Date(state.days[idx].iso).toLocaleDateString()}</div></div>
+          <a class="primary" href="#">Back</a></div></header>
+          <main class="container">
+            <div class="card" style="margin-top:12px">
+              <div id="map" style="height:520px; border-radius:16px; position:relative"></div>
+              <div class="row small" style="margin-top:8px">
+                <div id="liveStats">Live tracking inactive</div>
+                <div class="actions"><button class="primary" id="startTrack">Start Live Tracking</button>
+                <button class="primary" id="stopTrack">Stop</button>
+                <button class="btn" id="fitDay">Fit Day</button>
+                <button class="btn" id="fitAll">Fit All</button></div>
+              </div>
+              <div style="position:relative">
+                <canvas id="elevation" class="elev" style="margin-top:8px"></canvas>
+                <div id="elevTip" class="tooltip" style="display:none">–</div>
+              </div>
+            </div>
+          </main>`;
+
+        const map = L.map('map').setView([42.6, 19.94], 10);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:18, attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+        const pts = state.days[idx].points;
+        const latlngs = pts.map(p=>[p[0],p[1]]);
+        const lineRemaining = L.polyline(latlngs, {weight:6, color:'#377eb8', opacity:0.9}).addTo(map);
+        const lineDone = L.polyline([], {weight:6, color:'#999', opacity:0.9}).addTo(map);
+        map.fitBounds(latlngs);
+        const series = accumulate(pts);
+        drawElevation(series, 0);
+
+        // Hover tooltip
+        (function enableElevHover(){
+          const canvas = document.getElementById('elevation');
+          const tip = document.getElementById('elevTip');
+          const pad = 24;
+          const maxD = series[series.length-1].d || 1;
+          function posToKm(evt){
+            const rect = canvas.getBoundingClientRect();
+            const x = evt.clientX - rect.left;
+            const usable = canvas.clientWidth - 2*pad;
+            const t = Math.min(1, Math.max(0, (x - pad) / Math.max(1, usable)));
+            return t * maxD;
+          }
+          canvas.onmousemove = (evt)=>{
+            const km = posToKm(evt);
+            const e = interpElev(series, km);
+            drawElevation(series, km);
+            tip.style.display = 'block';
+            tip.textContent = `${km.toFixed(2)} km · ${Math.round(e)} m`;
+            const rect = canvas.getBoundingClientRect();
+            tip.style.left = `${evt.clientX - rect.left}px`;
+            tip.style.top = `${10}px`;
+          };
+          canvas.onmouseleave = ()=>{
+            tip.style.display = 'none';
+            drawElevation(series, null);
+          };
+        })();
+
+        document.getElementById('fitDay').onclick = ()=> map.fitBounds(latlngs);
+        document.getElementById('fitAll').onclick = ()=> {
+          const all = []; state.polylines.forEach(l=> all.push(...l.getLatLngs())); map.fitBounds(all);
+        };
+
+        // Nearest-point progress
+        function nearestIndex(cur){
+          let bestI=0, bestD=Infinity;
+          for (let i=0;i<pts.length;i++){
+            const d = haversine(cur, [pts[i][0], pts[i][1]]);
+            if (d < bestD){ bestD=d; bestI=i; }
+          }
+          return bestI;
+        }
+        function cumKm(i){
+          let d=0; for(let k=1;k<=i;k++){ d += haversine([pts[k-1][0],pts[k-1][1]], [pts[k][0],pts[k][1]]); } return d/1000;
+        }
+
+        const live = { watchId:null, marker:null };
+        document.getElementById('startTrack').onclick = ()=>{
+          if (!navigator.geolocation){ alert('Geolocation not supported'); return; }
+          const totalKm = series.slice(-1)[0].d;
+          live.watchId = navigator.geolocation.watchPosition((pos)=>{
+            const cur = [pos.coords.latitude, pos.coords.longitude];
+            const i = nearestIndex(cur);
+            const coveredKm = cumKm(i);
+            const pct = Math.min(100, Math.max(0, (coveredKm/totalKm)*100));
+            document.getElementById('liveStats').textContent =
+              `Covered ${coveredKm.toFixed(2)} / ${totalKm.toFixed(2)} km — ${pct.toFixed(1)}%`;
+            if (!live.marker){ live.marker = L.marker(cur, {icon}).addTo(map); } else { live.marker.setLatLng(cur); }
+            const doneLatLngs = latlngs.slice(0, Math.max(2,i+1));
+            const remainingLatLngs = latlngs.slice(Math.max(1,i));
+            lineDone.setLatLngs(doneLatLngs);
+            lineRemaining.setLatLngs(remainingLatLngs);
+            drawElevation(series, coveredKm);
+          }, (err)=>{
+            document.getElementById('liveStats').textContent = 'Tracking error: '+err.message;
+          }, { enableHighAccuracy:true, maximumAge: 3000, timeout: 10000 });
+        };
+        document.getElementById('stopTrack').onclick = ()=>{
+          if (live.watchId){ navigator.geolocation.clearWatch(live.watchId); live.watchId=null; document.getElementById('liveStats').textContent='Live tracking stopped'; }
+        };
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+{
+  "name": "Balkan Peaks Traverse",
+  "start_iso": "2025-09-13",
+  "days": [
+    {
+      "n": 1,
+      "iso": "2025-09-13",
+      "title": "Arrival in Plav",
+      "gpx": null
+    },
+    {
+      "n": 2,
+      "iso": "2025-09-14",
+      "title": "Plav \u2192 Vusanje",
+      "gpx": "1-plav-vuthaj.gpx"
+    },
+    {
+      "n": 3,
+      "iso": "2025-09-15",
+      "title": "Vusanje \u2192 Theth",
+      "gpx": "2-vusanje-theth.gpx"
+    },
+    {
+      "n": 4,
+      "iso": "2025-09-16",
+      "title": "Theth \u2192 Valbona",
+      "gpx": "3-theth-valbone-polia-keli-selimaj.gpx"
+    },
+    {
+      "n": 5,
+      "iso": "2025-09-17",
+      "title": "Cerem \u2192 Doberdol",
+      "gpx": "4-cerem-doberdol-gocaj-leonard.gpx"
+    },
+    {
+      "n": 6,
+      "iso": "2025-09-18",
+      "title": "Doberdol \u2192 Gjeravica",
+      "gpx": "5-doberdol-gjeravica.gpx"
+    },
+    {
+      "n": 7,
+      "iso": "2025-09-19",
+      "title": "Gjeravica \u2192 Gacaferi",
+      "gpx": "6-gjeravice-to-gacaferi-via-lake-tropoja.gpx"
+    },
+    {
+      "n": 8,
+      "iso": "2025-09-20",
+      "title": "Gacaferi \u2192 Babino Polje",
+      "gpx": "7-gacaferi-tromeda-babino-polje.gpx"
+    },
+    {
+      "n": 9,
+      "iso": "2025-09-21",
+      "title": "Babino Polje \u2192 Plav",
+      "gpx": "8-babino-polje-plav.gpx"
+    }
+  ],
+  "accommodations": [
+    {
+      "day": 1,
+      "place": "Plav",
+      "name": "Hostel Bear Hug",
+      "lat": 42.59827,
+      "lon": 19.93675
+    },
+    {
+      "day": 2,
+      "place": "Vusanje",
+      "name": "Guest House Vucetaj",
+      "lat": 42.522737,
+      "lon": 19.844805
+    },
+    {
+      "day": 3,
+      "place": "Theth",
+      "name": "Kula e Sadri Lukes",
+      "lat": 42.41591,
+      "lon": 19.75762
+    },
+    {
+      "day": 4,
+      "place": "Valbona",
+      "name": "Guest House Arben Selimaj",
+      "lat": 42.457428,
+      "lon": 19.900903
+    },
+    {
+      "day": 5,
+      "place": "Doberdol",
+      "name": "Guest House Leonard",
+      "lat": 42.54693,
+      "lon": 20.062313
+    },
+    {
+      "day": 6,
+      "place": "Gacaferi",
+      "name": "Guest House Gacaferi",
+      "lat": 42.5579,
+      "lon": 20.10711
+    },
+    {
+      "day": 7,
+      "place": "Babino Polje",
+      "name": "Eco Katun Hako",
+      "lat": 42.612743,
+      "lon": 20.042594
+    }
+  ],
+  "pois": [
+    {
+      "name": "Grlja Waterfall",
+      "near": "Vusanje",
+      "lat": null,
+      "lon": null
+    },
+    {
+      "name": "Eye of the Grasshopper Spring",
+      "near": "Ropojana Valley",
+      "lat": null,
+      "lon": null
+    },
+    {
+      "name": "Lake Ropojana (seasonal)",
+      "near": "Ropojana Valley",
+      "lat": null,
+      "lon": null
+    },
+    {
+      "name": "Peja Pass Viewpoint",
+      "near": "Theth",
+      "lat": null,
+      "lon": null
+    },
+    {
+      "name": "Valbona Pass + side peak",
+      "near": "Between Theth & Valbona",
+      "lat": null,
+      "lon": null
+    },
+    {
+      "name": "Lake Tropoja",
+      "near": "Toward Gacaferi",
+      "lat": null,
+      "lon": null
+    },
+    {
+      "name": "Three Border Peak (Tromeda)",
+      "near": "Border junction",
+      "lat": null,
+      "lon": null
+    },
+    {
+      "name": "Lake Hrid",
+      "near": "Babino Polje day",
+      "lat": null,
+      "lon": null
+    }
+  ]
+}
